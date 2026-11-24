@@ -207,7 +207,7 @@ def generate_spec_file(pkg_name, specfile, config: PackageConfig):
         "pkg_name": pkg_name,
         "version": version,
         "release": config.version_suffix,
-        "build_arch": pkg_info.get("BuildArch"),
+        "build_arch": config.cpu_arch,
         "description_short": pkg_info.get("Description_Short"),
         "description_long": pkg_info.get("Description_Long"),
         "group": pkg_info.get("Group"),

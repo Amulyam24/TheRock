@@ -55,6 +55,14 @@ on:
         type: string
         required: false
         default: "aws-linux-scale-rocm-prod"
+      package_arch:
+        description: >-
+          CPU architecture of the packages (x86_64 or ppc64le). Only affects rpm.
+          Non-x86_64 builds run directly on the `build_runs_on` runner (no
+          container, system Python) and are published under an <arch>/ directory.
+        type: string
+        required: false
+        default: "x86_64"
       enable_pre_upload_build_verify:
         description: >-
           After build_package.py, verify Created Packages listed in
@@ -151,9 +159,10 @@ jobs:
       contents: read
       id-token: write # Authenticate to AWS to upload package repositories.
     name: Build ${{ inputs.native_package_type }} packages
-    runs-on: ${{ github.repository_owner == 'ROCm' && inputs.build_runs_on || 'ubuntu-26.04' }}
-    container:
-      image: ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:a13e8370a2d1d33a910e47669cdf075dbe9554685e78592f22935ec7c7c35e39
+    runs-on: ${{ (github.repository_owner == 'ROCm' || inputs.package_arch != 'x86_64') && inputs.build_runs_on || 'ubuntu-26.04' }}
+    # The x86_64 image is not usable on other architectures; a null container
+    # runs the job directly on the self-hosted runner.
+    container: ${{ inputs.package_arch == 'x86_64' && fromJSON('{"image":"ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:a13e8370a2d1d33a910e47669cdf075dbe9554685e78592f22935ec7c7c35e39"}') || null }}
     outputs:
       package_repository_url: ${{ steps.upload-packages.outputs.package_repository_url }}
       summary: ${{ steps.summary.outputs.summary }}
@@ -166,6 +175,7 @@ jobs:
       ARTIFACT_RUN_ID: "${{ inputs.artifact_run_id != '' && inputs.artifact_run_id || github.run_id }}"
       DIST_AMDGPU_FAMILIES: ${{ inputs.dist_amdgpu_families }}
       PACKAGE_SUFFIX: ${{ inputs.package_suffix }}
+      PACKAGE_ARCH: ${{ inputs.package_arch }}
       # Use relative paths to avoid host/container path mismatch
       OUTPUT_DIR: output
       ARTIFACTS_DIR: output/artifacts
@@ -192,9 +202,20 @@ jobs:
           ref: ${{ inputs.ref || '' }}
 
       - name: Set up Python
+        if: ${{ inputs.package_arch == 'x86_64' }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
+
+      # actions/setup-python has no toolcache builds for ppc64le. Use the
+      # distro Python in a venv; putting it on PATH provides `python` and `pip`.
+      - name: Set up system Python
+        if: ${{ inputs.package_arch != 'x86_64' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv python3-pip
+          python3 -m venv "${RUNNER_TEMP}/venv"
+          echo "${RUNNER_TEMP}/venv/bin" >> "$GITHUB_PATH"
 
       - name: Install Python requirements
         run: |
@@ -234,6 +255,7 @@ jobs:
             --rocm-version "${ROCM_VERSION}" \
             --artifacts-dir "${{ env.ARTIFACTS_DIR }}" \
             --pkg-type "${NATIVE_PACKAGE_TYPE}" \
+            --arch "${PACKAGE_ARCH}" \
             --version-suffix "${ARTIFACT_RUN_ID}" \
             --build-variant "${BUILD_VARIANT}"
 
@@ -260,6 +282,7 @@ jobs:
           python ./build_tools/packaging/linux/build_package_repo.py \
             --pkg-type "${NATIVE_PACKAGE_TYPE}" \
             --package-dir "${{ env.PACKAGE_DIST_DIR }}" \
+            --arch "${PACKAGE_ARCH}" \
             --release-type "${RELEASE_TYPE}"
 
       # Checksums are authoritative only after repository metadata exists.
@@ -269,6 +292,7 @@ jobs:
         run: |
           python ./build_tools/packaging/linux/verify_package_repo_checksums.py \
             --pkg-type "${NATIVE_PACKAGE_TYPE}" \
+            --arch "${PACKAGE_ARCH}" \
             --package-dir "${{ env.PACKAGE_DIST_DIR }}"
 
       - name: Configure AWS credentials for artifact uploads
@@ -282,6 +306,7 @@ jobs:
           python ./build_tools/packaging/linux/upload_package_repo.py \
             --pkg-type "${NATIVE_PACKAGE_TYPE}" \
             --run-id "${ARTIFACT_RUN_ID}" \
+            --arch "${PACKAGE_ARCH}" \
             --package-dir "${{ env.PACKAGE_DIST_DIR }}"
 
       - name: Capture job summary

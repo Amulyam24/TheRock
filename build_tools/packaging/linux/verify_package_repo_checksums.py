@@ -70,7 +70,8 @@ examples:
 
 DEB checks MD5sum and SHA256 on every pool archive, and checks Release against
 Packages and Packages.gz. RPM checks repomd.xml against primary.xml.gz, then
-checks each package SHA256 (or stronger) against the archive under x86_64/.
+checks each package SHA256 (or stronger) against the archive under <arch>/
+(x86_64 by default; pass --arch for other architectures).
 Exit status is 0 on success and 1 on any mismatch, missing file, or corrupt
 metadata.
 """
@@ -80,7 +81,7 @@ _DEB_PACKAGES_REL = "main/binary-amd64/Packages"
 _DEB_PACKAGES_GZ_REL = "main/binary-amd64/Packages.gz"
 _PUBLISHED_DEB_RELEASE = "dists/stable/Release"
 _PUBLISHED_DEB_PACKAGES_GZ = "dists/stable/main/binary-amd64/Packages.gz"
-_RPM_ARCH_DIR = Path("x86_64")
+_DEFAULT_RPM_ARCH = "x86_64"
 _PUBLISHED_RPM_REPOMD = "repodata/repomd.xml"
 
 
@@ -125,14 +126,17 @@ class PackageChecksumError(Exception):
         super().__init__("\n".join(errors))
 
 
-def verify_package_repository(package_dir: Path, pkg_type: str) -> None:
+def verify_package_repository(
+    package_dir: Path, pkg_type: str, arch: str = _DEFAULT_RPM_ARCH
+) -> None:
     """Hash every local package and compare it with repository metadata.
 
     Args:
         package_dir: Repository root produced by ``build_package_repo.py``.
             DEB roots contain ``dists/`` and ``pool/``. RPM roots contain
-            ``x86_64/``.
+            ``<arch>/``.
         pkg_type: ``deb`` or ``rpm``.
+        arch: RPM architecture directory (ignored for DEB).
 
     Raises:
         PackageChecksumError: When any required checksum check fails. The
@@ -143,7 +147,7 @@ def verify_package_repository(package_dir: Path, pkg_type: str) -> None:
         _verify_local_deb_repository(root)
         return
     if pkg_type == "rpm":
-        _verify_local_rpm_repository(root)
+        _verify_local_rpm_repository(root, arch)
         return
     raise PackageChecksumError([f"unsupported package type: {pkg_type}"])
 
@@ -225,12 +229,17 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Root of the repository tree produced by build_package_repo.py.",
     )
+    parser.add_argument(
+        "--arch",
+        default=_DEFAULT_RPM_ARCH,
+        help="RPM architecture directory to verify (default: x86_64).",
+    )
     args = parser.parse_args(argv)
     package_dir = args.package_dir
     if not package_dir.is_dir():
         parser.error(f"--package-dir is not a directory: {package_dir}")
     try:
-        verify_package_repository(package_dir, args.pkg_type)
+        verify_package_repository(package_dir, args.pkg_type, args.arch)
     except PackageChecksumError as error:
         print("[FAIL] Package repository checksum verification failed", file=sys.stderr)
         for line in error.errors:
@@ -279,14 +288,14 @@ def _verify_local_deb_repository(root: Path) -> None:
     failures.raise_if_any()
 
 
-def _verify_local_rpm_repository(root: Path) -> None:
+def _verify_local_rpm_repository(root: Path, arch: str = _DEFAULT_RPM_ARCH) -> None:
     """Fail unless ``repomd.xml``, primary metadata, and every RPM agree.
 
     The primary checksum and each package checksum must be SHA256 or stronger.
-    An extra ``.rpm`` under ``x86_64/`` that is not indexed also fails.
+    An extra ``.rpm`` under ``<arch>/`` that is not indexed also fails.
     """
     failures = _Failures()
-    arch_dir = root / _RPM_ARCH_DIR
+    arch_dir = root / arch
     repomd_path = arch_dir / "repodata" / "repomd.xml"
     repomd_bytes = _read_required(repomd_path, failures)
     if repomd_bytes is None:

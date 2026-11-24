@@ -148,9 +148,10 @@ def _write_rpm_repo(
     repomd_digest: str | None = None,
     extra_payload: bytes | None = None,
     write_archive: bool = True,
+    arch_name: str = "x86_64",
 ) -> Path:
     """Build a one-package RPM repository and return the archive path."""
-    arch = root / "x86_64"
+    arch = root / arch_name
     repodata = arch / "repodata"
     repodata.mkdir(parents=True)
     archive = arch / "demo.rpm"
@@ -327,6 +328,17 @@ class RpmRepositoryChecksumTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             _write_rpm_repo(Path(temp_dir))
             checksums.verify_package_repository(Path(temp_dir), "rpm")
+
+    def test_ppc64le_repository_passes_with_arch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _write_rpm_repo(Path(temp_dir), arch_name="ppc64le")
+            checksums.verify_package_repository(Path(temp_dir), "rpm", arch="ppc64le")
+
+    def test_ppc64le_repository_fails_with_default_arch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _write_rpm_repo(Path(temp_dir), arch_name="ppc64le")
+            with self.assertRaises(checksums.PackageChecksumError):
+                checksums.verify_package_repository(Path(temp_dir), "rpm")
 
     def test_sha512_package_checksum_passes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

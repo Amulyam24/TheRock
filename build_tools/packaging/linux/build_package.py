@@ -539,6 +539,7 @@ def create_package_config(args: argparse.Namespace) -> PackageConfig:
         gfxarch_list=tuple(gfxarch_list),
         build_variant=args.build_variant,
         deb_compression_args=deb_compression_args,
+        cpu_arch=args.arch,
     )
 
 
@@ -682,6 +683,17 @@ def main(argv: list[str]):
         type=str,
         required=True,
         help="Choose the package format to be generated: DEB or RPM",
+    )
+
+    p.add_argument(
+        "--arch",
+        type=str,
+        default=PackageConfig.cpu_arch,
+        choices=SUPPORTED_CPU_ARCHS,
+        help=(
+            "CPU architecture of the RPM packages (RPM BuildArch). "
+            "Not used for DEB. Default: %(default)s"
+        ),
     )
 
     p.add_argument(

@@ -1,0 +1,57 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+# Manually build and publish ppc64le RPM packages from existing ppc64le
+# artifacts.
+#
+# This is deliberately not part of the automatic CI flow: the packaging job
+# repackages whatever artifacts `artifact_run_id` points at, and the standard CI
+# runs produce x86_64 artifacts. Only run this against a run that built
+# ppc64le artifacts.
+
+name: Build ppc64le RPM Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: "Workflow run id that produced the ppc64le artifacts"
+        required: true
+        type: string
+      dist_amdgpu_families:
+        description: "Semicolon-separated list of GPU families (e.g., 'gfx94X-dcgpu;gfx120X-all')"
+        required: true
+        type: string
+      rocm_version:
+        description: "ROCm RPM package version (e.g., 8.0.0)"
+        required: true
+        type: string
+      build_runs_on:
+        description: "Runner label of the ppc64le self-hosted runner"
+        required: true
+        type: string
+        default: "ppc64le"
+      release_type:
+        description: "Release type used for artifact storage and package publishing"
+        required: false
+        type: string
+        default: ci
+
+permissions:
+  contents: read
+
+jobs:
+  build_native_rpm_packages:
+    name: Build RPM Packages (ppc64le)
+    uses: ./.github/workflows/multi_arch_build_native_linux_packages.yml
+    with:
+      artifact_run_id: ${{ inputs.artifact_run_id }}
+      dist_amdgpu_families: ${{ inputs.dist_amdgpu_families }}
+      rocm_version: ${{ inputs.rocm_version }}
+      native_package_type: rpm
+      package_arch: ppc64le
+      build_runs_on: ${{ inputs.build_runs_on }}
+      release_type: ${{ inputs.release_type }}
+    permissions:
+      contents: read
+      id-token: write

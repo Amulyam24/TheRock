@@ -194,29 +194,33 @@ def _emit_github_output(key: str, value: str) -> None:
             f.write(f"{key}={value}\n")
 
 
-def _package_install_url(bucket: str, prefix: str, pkg_type: str) -> str:
+def _package_install_url(
+    bucket: str, prefix: str, pkg_type: str, arch: str = "x86_64"
+) -> str:
     """Compute the package-manager install URL for a repository location.
 
-    RPM ``baseurl`` must point at ``x86_64/`` (where ``repodata/`` lives).
+    RPM ``baseurl`` must point at ``<arch>/`` (where ``repodata/`` lives).
     DEB clients use the repo root; apt resolves ``dists/`` itself.
 
     Args:
         bucket: S3 artifact bucket name.
         prefix: S3 key prefix for this native package repo.
         pkg_type: ``deb`` or ``rpm``.
+        arch: RPM architecture directory (ignored for DEB).
 
     Returns:
         HTTPS URL suitable for ``sources.list`` or ``.repo`` ``baseurl``.
     """
     base = StorageLocation(bucket, prefix).https_url
     if pkg_type == "rpm":
-        return f"{base}/x86_64"
+        return f"{base}/{arch}"
     return base
 
 
 def _resolve_upload_target(
     args: argparse.Namespace,
     pkg_type: str,
+    arch: str = "x86_64",
 ) -> tuple[str, str, str, bool]:
     """Resolve S3 destination and install URL for a native package upload.
 
@@ -228,6 +232,7 @@ def _resolve_upload_target(
     Args:
         args: Parsed CLI namespace (must include ``run_id``).
         pkg_type: ``deb`` or ``rpm``.
+        arch: RPM architecture directory (ignored for DEB).
 
     Returns:
         ``(bucket, prefix, install_url, dedupe)`` where ``dedupe`` is always
@@ -235,7 +240,7 @@ def _resolve_upload_target(
     """
     root = WorkflowOutputRoot.from_workflow_run(run_id=args.run_id, platform="linux")
     loc = root.native_linux_packages(pkg_type)
-    install_url = _package_install_url(loc.bucket, loc.relative_path, pkg_type)
+    install_url = _package_install_url(loc.bucket, loc.relative_path, pkg_type, arch)
     return loc.bucket, loc.relative_path, install_url, False
 
 
@@ -260,11 +265,18 @@ def main() -> None:
         required=True,
         help="Path to the directory containing packages and repo metadata.",
     )
+    parser.add_argument(
+        "--arch",
+        default="x86_64",
+        help="RPM architecture directory used in the install URL (default: x86_64).",
+    )
 
     args = parser.parse_args()
     package_dir = Path(args.package_dir).resolve()
 
-    bucket, prefix, install_url, dedupe = _resolve_upload_target(args, args.pkg_type)
+    bucket, prefix, install_url, dedupe = _resolve_upload_target(
+        args, args.pkg_type, args.arch
+    )
 
     upload_to_s3(package_dir, bucket, prefix, dedupe=dedupe)
 

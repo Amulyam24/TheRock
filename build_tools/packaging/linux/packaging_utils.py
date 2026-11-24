@@ -5,7 +5,6 @@
 import functools
 import json
 import os
-import platform
 import re
 import shutil
 import sys
@@ -32,6 +31,8 @@ logger = TheRockLogger(__name__)
 GFX_HOST = "gfx_host"
 # Used for creating versioned meta package (depends on host + devices)
 GFX_META = "gfx_meta"
+# CPU architectures (RPM BuildArch / repo directory names) we can package for.
+SUPPORTED_CPU_ARCHS = ("x86_64", "ppc64le")
 
 # Splits comma-, semicolon-, or whitespace-separated arch tokens in one string.
 _GFX_ARCH_SPLIT_RE = re.compile(r"[,;\s]+")
@@ -80,6 +81,7 @@ def normalize_target_list(
 # version_suffix - Used along with package name
 # install_prefix - Install prefix for the package
 # gfx_arch - gfxarch used for building package
+# cpu_arch - CPU architecture of the RPM packages (e.g. x86_64, ppc64le)
 # versioned_pkg - Used to indicate versioned or non versioned packages
 # gfxarch_list - List of all architectures to build device packages for
 # deb_compression_args - Resolved dpkg-deb compression arguments (DEB only)
@@ -100,6 +102,7 @@ class PackageConfig:
     gfxarch_list: tuple = field(default_factory=tuple)
     build_variant: str = ""
     deb_compression_args: str = "-Zxz"
+    cpu_arch: str = "x86_64"
 
 
 def read_package_json_file():
@@ -933,7 +936,7 @@ def move_packages_to_destination(updated_pkg_name, config: PackageConfig):
         # Example: amdrocm-fft-host8.2_8.2.0-12345_amd64.deb
         prefix = f"{updated_pkg_name}_"
     else:
-        artifacts = list(PKG_DIR.glob(f"*/RPMS/{platform.machine()}/*.rpm"))
+        artifacts = list(PKG_DIR.glob(f"*/RPMS/{config.cpu_arch}/*.rpm"))
         # RPM filename format: {updated_pkg_name}-{version}-{release}.{arch}.rpm
         # Example: amdrocm-fft-host8.2-8.2.0-12345.x86_64.rpm
         prefix = f"{updated_pkg_name}-"

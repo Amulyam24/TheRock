@@ -192,6 +192,14 @@ class PackageInstallUrlTest(unittest.TestCase):
         self.assertTrue(url.endswith("/x86_64"))
         self.assertIn(TEST_PREFIX, url)
 
+    def test_rpm_url_uses_requested_arch(self) -> None:
+        """ppc64le repositories are published under ``ppc64le/``."""
+        url = upload_repo._package_install_url(
+            TEST_BUCKET, TEST_PREFIX, "rpm", "ppc64le"
+        )
+        self.assertTrue(url.endswith("/ppc64le"))
+        self.assertNotIn("/x86_64", url)
+
     def test_deb_url_uses_repo_root(self) -> None:
         """DEB install URL is repo root; apt resolves ``dists/`` itself."""
         deb_prefix = "12345-linux/packages/deb/20250825-12345"

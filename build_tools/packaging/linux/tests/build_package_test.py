@@ -144,6 +144,7 @@ def _args(tmp: Path, **overrides: object) -> Namespace:
         "clean_build": False,
         "build_variant": "",
         "deb_compression": "xz",
+        "arch": TEST_BUILD_ARCH,
     }
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -887,6 +888,30 @@ class CreateVersionedRpmPackageTest(BuildPackageTestCase):
         self.assertEqual(_spec_field(spec, "Name"), FFT_HOST_PACKAGE)
         self.assertEqual(_spec_field(spec, "BuildArch"), TEST_BUILD_ARCH)
         self.assertIn("amdrocm-runtime", _spec_field(spec, "Requires"))
+
+    @patch.object(rpm_package, "move_packages_to_destination", return_value=[])
+    @patch.object(rpm_package, "package_with_rpmbuild")
+    def test_cpu_arch_overrides_spec_build_arch(
+        self, _mock_rpmbuild: object, _mock_move: object
+    ) -> None:
+        """``PackageConfig.cpu_arch`` (not package.json) sets spec ``BuildArch``."""
+        cfg = _kpack_config(self.temp_dir, pkg_type=TEST_PKG_TYPE_RPM)
+        _stage_package_artifacts(
+            pkg_name=PKG_FFT,
+            artifacts_dir=cfg.artifacts_dir,
+            gfx_arch=GFX_HOST,
+        )
+        _stage_package_artifacts(
+            pkg_name=PKG_RUNTIME,
+            artifacts_dir=cfg.artifacts_dir,
+            gfx_arch=GFX_HOST,
+        )
+        host_cfg = replace(cfg, gfx_arch=GFX_HOST, cpu_arch="ppc64le")
+
+        rpm_package.create_versioned_rpm_package(pkg_name=PKG_FFT, config=host_cfg)
+
+        spec = _read_spec_file(pkg_name=PKG_FFT, config=host_cfg)
+        self.assertEqual(_spec_field(spec, "BuildArch"), "ppc64le")
 
     @patch.object(rpm_package, "move_packages_to_destination", return_value=[])
     @patch.object(rpm_package, "package_with_rpmbuild")

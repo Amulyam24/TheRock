@@ -32,6 +32,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 THIS_SCRIPT_DIR = Path(__file__).resolve().parent
@@ -90,6 +91,35 @@ class ParseReleaseTypeTest(unittest.TestCase):
         parser = argparse.ArgumentParser()
         with self.assertRaises(SystemExit):
             repo_builder.parse_release_type(parser, "   ")
+
+
+class CreateRpmRepoTest(unittest.TestCase):
+    """Tests for :func:`build_package_repo.create_rpm_repo` arch layout."""
+
+    def _run(self, arch: str | None) -> tuple[set[str], list]:
+        calls: list = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "pkg-a.rpm").write_bytes(b"rpm")
+            with unittest.mock.patch.object(
+                repo_builder, "run_command", side_effect=lambda *a, **k: calls.append(k)
+            ):
+                if arch is None:
+                    repo_builder.create_rpm_repo(root)
+                else:
+                    repo_builder.create_rpm_repo(root, arch)
+            moved = {p.relative_to(root).as_posix() for p in root.rglob("*.rpm")}
+        return moved, calls
+
+    def test_default_arch_is_x86_64(self) -> None:
+        moved, calls = self._run(None)
+        self.assertEqual(moved, {"x86_64/pkg-a.rpm"})
+        self.assertTrue(calls[0]["cwd"].endswith("x86_64"))
+
+    def test_ppc64le_arch_directory(self) -> None:
+        moved, calls = self._run("ppc64le")
+        self.assertEqual(moved, {"ppc64le/pkg-a.rpm"})
+        self.assertTrue(calls[0]["cwd"].endswith("ppc64le"))
 
 
 class MainTest(unittest.TestCase):

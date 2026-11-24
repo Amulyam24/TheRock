@@ -19,7 +19,7 @@ Public API:
 
   - :func:`generate_release_file_with_checksums` — write DEB ``Release`` with checksums
   - :func:`create_deb_repo` — ``pool/``, ``dists/``, and ``Release`` for DEB
-  - :func:`create_rpm_repo` — ``x86_64/`` layout and ``createrepo_c`` for RPM
+  - :func:`create_rpm_repo` — ``<arch>/`` layout and ``createrepo_c`` for RPM
   - :func:`parse_release_type` — normalize ``--release-type`` CLI value
   - :func:`run_command` — subprocess helper for packaging tools
   - :func:`main` — CLI entry point
@@ -234,18 +234,19 @@ def create_deb_repo(package_dir: Path | str, release_type: str) -> None:
     generate_release_file_with_checksums(release, release_type, dists)
 
 
-def create_rpm_repo(package_dir: Path | str) -> None:
+def create_rpm_repo(package_dir: Path | str, arch: str = "x86_64") -> None:
     """Create RPM ``repodata/`` from the complete local build tree.
 
-    Moves top-level ``.rpm`` files into ``x86_64/`` and runs ``createrepo_c`` so
+    Moves top-level ``.rpm`` files into ``<arch>/`` and runs ``createrepo_c`` so
     ``repodata/`` indexes every package present locally (Fixes #6540 on CI re-runs
     when ``upload_package_repo.py`` dedupes package uploads).
 
     Args:
         package_dir: Root of the native packaging output tree. Modified in place.
+        arch: CPU architecture directory name (e.g. ``x86_64``, ``ppc64le``).
 
     Returns:
-        None. Creates ``x86_64/repodata/`` under ``package_dir``.
+        None. Creates ``<arch>/repodata/`` under ``package_dir``.
 
     Raises:
         subprocess.CalledProcessError: If ``createrepo_c`` fails.
@@ -253,10 +254,10 @@ def create_rpm_repo(package_dir: Path | str) -> None:
     print("Creating RPM repository...")
 
     package_path = Path(package_dir)
-    arch_dir = package_path / "x86_64"
+    arch_dir = package_path / arch
     arch_dir.mkdir(parents=True, exist_ok=True)
 
-    # Flat .rpm files from build_package.py → x86_64/ before createrepo_c.
+    # Flat .rpm files from build_package.py → <arch>/ before createrepo_c.
     for f in package_path.iterdir():
         if f.suffix == ".rpm":
             shutil.move(f, arch_dir / f.name)
@@ -308,6 +309,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the directory containing built packages (modified in place).",
     )
     parser.add_argument(
+        "--arch",
+        default="x86_64",
+        help="CPU architecture directory for rpm repositories (default: x86_64).",
+    )
+    parser.add_argument(
         "--release-type",
         default="ci",
         help=(
@@ -326,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.pkg_type == "deb":
         create_deb_repo(package_dir, release_type)
     else:
-        create_rpm_repo(package_dir)
+        create_rpm_repo(package_dir, args.arch)
 
     return 0
 
